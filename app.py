@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, jsonify, request
 import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta # timedelta 임포트 추가
+from datetime import datetime, timedelta
 import os
-import re
-import json
+import json # JSON 데이터 처리에만 사용합니다.
 
 app = Flask(__name__)
 
@@ -24,7 +22,6 @@ def get_school_calendar():
     start_dt_str = f"{year}-{month:02d}-01"
     
     # 마지막 날짜 계산: 다음 달 1일에서 하루를 빼면 이번 달 마지막 날이 됩니다.
-    # 12월의 경우 다음 해 1월 1일에서 하루를 뺍니다.
     if month == 12:
         last_day_of_month = (datetime(year + 1, 1, 1) - timedelta(days=1)).day
     else:
@@ -32,52 +29,41 @@ def get_school_calendar():
         
     end_dt_str = f"{year}-{month:02d}-{last_day_of_month:02d}"
 
+    # 이 파라미터들이 `image_e5ee78.png` 로그에도 영향을 미쳤을 수 있습니다.
+    # 스크립트에서 확인된 파라미터를 정확히 사용합니다.
     params = {
-        'mlsvViewType': 'json', # 응답 스크립트에서 확인된 파라미터
+        'mlsvViewType': 'json', # JSON 응답을 유도하는 파라미터
         'startDt': start_dt_str,
         'endDt': end_dt_str,
-        'eventSeCode': '', # 스크립트에서 기본값으로 사용될 가능성 있는 빈 문자열
+        'eventSeCode': '', # 스크립트에서 사용된 것으로 추정되는 빈 문자열
     }
 
+    # 헤더는 여전히 브라우저처럼 보이도록 설정합니다.
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36',
         'Referer': 'https://imok-m.goesw.kr/subList/30000016611', # 학사일정 메인 페이지 주소
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+        'Accept': 'application/json, text/javascript, */*; q=0.01', # JSON 응답을 받는다고 명시
         'Accept-Encoding': 'gzip, deflate, br',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
         'Connection': 'keep-alive',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', # POST 요청 시 필요
-        'X-Requested-With': 'XMLHttpRequest', # AJAX 요청임을 알림
-        # 'Cookie' 헤더가 Network 탭에서 확인된다면 여기에 추가해야 합니다.
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
     }
 
     try:
         response = requests.post(BASE_URL, data=params, headers=headers)
         response.raise_for_status() # HTTP 에러(4xx, 5xx)가 발생하면 예외 발생
 
-        html_content = response.text
-        soup = BeautifulSoup(html_content, 'html.parser')
-
-        # 🚨🚨🚨 JavaScript 코드에서 var eventListData = [...] 부분을 추출합니다! 🚨🚨🚨
-        event_list_data_str = None
-        for script_tag in soup.find_all('script'):
-            # script_tag.string 대신 get_text() 사용 (더 안정적)
-            script_text = script_tag.get_text(strip=True) # strip=True로 공백 제거
-            
-            if 'var eventListData =' in script_text:
-                # 정규 표현식을 사용하여 'var eventListData = ' 다음의 JSON 배열 부분을 찾습니다.
-                # 공백과 줄바꿈에 더 유연하게 대응하기 위해 \s*를 사용합니다.
-                match = re.search(r'var eventListData\s*=\s*(\[.*?\]);', script_text, re.DOTALL)
-                if match:
-                    event_list_data_str = match.group(1)
-                    break
+        # 🚨🚨🚨 HTML 파싱 대신 JSON으로 바로 파싱합니다! 🚨🚨🚨
+        data = response.json() 
         
-        if not event_list_data_str:
-            print(f"Error: Could not find 'var eventListData' in the script tags for year={year}, month={month}.")
-            return jsonify({"error": "Failed to find event data in the script. The website HTML structure might have changed."}), 500
+        # `image_e5ee78.png` 로그에서 확인된 JSON 구조에 따라 데이터를 추출합니다.
+        # {"head":{"result":"success"},"body":{"eventListJson":[...]}}
+        event_data_list = data.get('body', {}).get('eventListJson', [])
 
-        # 추출한 JSON 문자열을 파이썬 리스트로 변환합니다.
-        event_data_list = json.loads(event_list_data_str)
+        if not event_data_list:
+            print(f"Error: 'eventListJson' not found or empty in JSON response for year={year}, month={month}. Response: {data}")
+            return jsonify({"error": "Failed to find event data in the JSON response. The API structure might have changed or no events for this month."}), 500
 
         academic_events_dict = {} # 날짜별로 이벤트를 묶기 위한 딕셔너리
         for event in event_data_list:
@@ -85,12 +71,10 @@ def get_school_calendar():
             event_title = event.get('title') # 'title' 키가 이벤트 제목
 
             if event_date_str and event_title:
-                # 날짜를 파싱하여 연, 월, 일을 추출합니다.
                 try:
                     event_date = datetime.strptime(event_date_str, '%Y-%m-%d')
                     event_day = event_date.day
                     
-                    # 해당 날짜의 이벤트 리스트를 가져오거나 새로 생성합니다.
                     if event_date_str not in academic_events_dict:
                         academic_events_dict[event_date_str] = {
                             "date": event_date_str,
@@ -101,7 +85,7 @@ def get_school_calendar():
                     
                 except ValueError:
                     print(f"Warning: Invalid date format for event: {event_date_str}")
-                    continue # 날짜 형식이 잘못되면 건너뜁니다.
+                    continue
         
         # 딕셔너리의 값을 리스트로 변환하고, 날짜 순으로 정렬합니다.
         academic_events = list(academic_events_dict.values())
@@ -113,8 +97,8 @@ def get_school_calendar():
         print(f"Request Error accessing API endpoint: {e}")
         return jsonify({"error": f"Failed to fetch content from the API URL. Details: {e}. Please ensure all request headers and parameters are correct."}), 500
     except json.JSONDecodeError as e:
-        print(f"JSON Decode Error: {e} - Raw string (first 200 chars): {event_list_data_str[:200] if event_list_data_str else 'N/A'}")
-        return jsonify({"error": f"Failed to parse JSON data from script. Details: {e}"}), 500
+        print(f"JSON Decode Error: {e} - Raw response (first 200 chars): {response.text[:200] if response.text else 'N/A'}")
+        return jsonify({"error": f"Failed to parse JSON data from response. Details: {e}"}), 500
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return jsonify({"error": f"An unexpected server error occurred: {e}"}), 500
