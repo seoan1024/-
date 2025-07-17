@@ -2,10 +2,10 @@
 from flask import Flask, jsonify, request
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta # timedelta 임포트 추가
 import os
-import re # 정규 표현식을 사용하기 위해 re 모듈을 임포트합니다.
-import json # JSON 문자열을 파싱하기 위해 json 모듈을 임포트합니다.
+import re
+import json
 
 app = Flask(__name__)
 
@@ -20,19 +20,23 @@ def get_school_calendar():
     year = request.args.get('year', type=int, default=current_year)
     month = request.args.get('month', type=int, default=current_month)
 
-    # 파라미터는 `moduleEventvViewCal.jsp` 스크립트에서 확인한 대로 `startDt`, `endDt`, `eventSeCode`가 필요합니다.
-    # startDt와 endDt는 해당 월의 1일과 마지막 날로 설정합니다.
+    # 해당 월의 1일과 마지막 날로 설정
     start_dt_str = f"{year}-{month:02d}-01"
     
-    # 해당 월의 마지막 날짜 계산
-    last_day_of_month = (datetime(year, month % 12 + 1, 1) - timedelta(days=1)).day if month < 12 else (datetime(year + 1, 1, 1) - timedelta(days=1)).day
+    # 마지막 날짜 계산: 다음 달 1일에서 하루를 빼면 이번 달 마지막 날이 됩니다.
+    # 12월의 경우 다음 해 1월 1일에서 하루를 뺍니다.
+    if month == 12:
+        last_day_of_month = (datetime(year + 1, 1, 1) - timedelta(days=1)).day
+    else:
+        last_day_of_month = (datetime(year, month + 1, 1) - timedelta(days=1)).day
+        
     end_dt_str = f"{year}-{month:02d}-{last_day_of_month:02d}"
 
     params = {
-        'mlsvViewType': 'json', # 스크립트에서 mlsvViewType: 'json'으로 되어 있었음
+        'mlsvViewType': 'json', # 응답 스크립트에서 확인된 파라미터
         'startDt': start_dt_str,
         'endDt': end_dt_str,
-        'eventSeCode': '', # 스크립트에서 $('#eventSeCode').val() 이었으나, 기본값은 빈 문자열로 추정
+        'eventSeCode': '', # 스크립트에서 기본값으로 사용될 가능성 있는 빈 문자열
     }
 
     headers = {
@@ -55,13 +59,15 @@ def get_school_calendar():
         soup = BeautifulSoup(html_content, 'html.parser')
 
         # 🚨🚨🚨 JavaScript 코드에서 var eventListData = [...] 부분을 추출합니다! 🚨🚨🚨
-        script_tags = soup.find_all('script')
         event_list_data_str = None
-        for script_tag in script_tags:
-            script_text = script_tag.string # script_tag.string은 <script>...</script> 안의 텍스트를 가져옵니다.
-            if script_text and 'var eventListData =' in script_text:
+        for script_tag in soup.find_all('script'):
+            # script_tag.string 대신 get_text() 사용 (더 안정적)
+            script_text = script_tag.get_text(strip=True) # strip=True로 공백 제거
+            
+            if 'var eventListData =' in script_text:
                 # 정규 표현식을 사용하여 'var eventListData = ' 다음의 JSON 배열 부분을 찾습니다.
-                match = re.search(r'var eventListData = (\[.*?\]);', script_text, re.DOTALL)
+                # 공백과 줄바꿈에 더 유연하게 대응하기 위해 \s*를 사용합니다.
+                match = re.search(r'var eventListData\s*=\s*(\[.*?\]);', script_text, re.DOTALL)
                 if match:
                     event_list_data_str = match.group(1)
                     break
@@ -73,7 +79,7 @@ def get_school_calendar():
         # 추출한 JSON 문자열을 파이썬 리스트로 변환합니다.
         event_data_list = json.loads(event_list_data_str)
 
-        academic_events = []
+        academic_events_dict = {} # 날짜별로 이벤트를 묶기 위한 딕셔너리
         for event in event_data_list:
             event_date_str = event.get('start') # 'start' 키가 날짜 정보
             event_title = event.get('title') # 'title' 키가 이벤트 제목
@@ -82,28 +88,23 @@ def get_school_calendar():
                 # 날짜를 파싱하여 연, 월, 일을 추출합니다.
                 try:
                     event_date = datetime.strptime(event_date_str, '%Y-%m-%d')
-                    event_year = event_date.year
-                    event_month = event_date.month
                     event_day = event_date.day
+                    
+                    # 해당 날짜의 이벤트 리스트를 가져오거나 새로 생성합니다.
+                    if event_date_str not in academic_events_dict:
+                        academic_events_dict[event_date_str] = {
+                            "date": event_date_str,
+                            "day": event_day,
+                            "events": []
+                        }
+                    academic_events_dict[event_date_str]["events"].append(event_title)
+                    
                 except ValueError:
+                    print(f"Warning: Invalid date format for event: {event_date_str}")
                     continue # 날짜 형식이 잘못되면 건너뜁니다.
-                
-                # 기존 데이터 구조에 맞게 변환합니다.
-                # 날짜별로 이벤트를 묶으려면 별도의 로직이 필요하지만, 일단 JSON 리스트 그대로 반환하겠습니다.
-                # 만약 날짜별로 묶고 싶다면, 딕셔너리에 날짜를 키로 사용하여 이벤트를 추가하는 로직을 구현해야 합니다.
-                
-                # 여기서는 원본 JSON 리스트의 각 항목을 그대로 반환하는 방식입니다.
-                academic_events.append({
-                    "date": event_date_str,
-                    "day": event_day,
-                    "events": [event_title] # 이벤트를 리스트 안에 넣습니다.
-                    # 원본 JSON의 다른 필드도 포함하려면 여기에 추가:
-                    # "eventSeCode": event.get('eventSeCode'),
-                    # "eventSeq": event.get('eventSeq'),
-                    # "className": event.get('className')
-                })
         
-        # 날짜 순으로 정렬 (선택 사항)
+        # 딕셔너리의 값을 리스트로 변환하고, 날짜 순으로 정렬합니다.
+        academic_events = list(academic_events_dict.values())
         academic_events.sort(key=lambda x: x['date'])
         
         return jsonify(academic_events)
@@ -112,14 +113,12 @@ def get_school_calendar():
         print(f"Request Error accessing API endpoint: {e}")
         return jsonify({"error": f"Failed to fetch content from the API URL. Details: {e}. Please ensure all request headers and parameters are correct."}), 500
     except json.JSONDecodeError as e:
-        print(f"JSON Decode Error: {e} - Raw string: {event_list_data_str[:200]}...") # 에러 발생 시 원시 문자열 일부 출력
+        print(f"JSON Decode Error: {e} - Raw string (first 200 chars): {event_list_data_str[:200] if event_list_data_str else 'N/A'}")
         return jsonify({"error": f"Failed to parse JSON data from script. Details: {e}"}), 500
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return jsonify({"error": f"An unexpected server error occurred: {e}"}), 500
 
-# 날짜 계산을 위한 timedelta 임포트
-from datetime import timedelta
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
