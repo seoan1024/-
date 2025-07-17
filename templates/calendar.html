@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>이목중학교 학사일정</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        h1 { color: #0056b3; text-align: center; margin-bottom: 30px; }
+        .calendar-container { background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 800px; margin: auto; }
+        .date-navigation { text-align: center; margin-bottom: 20px; }
+        .date-navigation button { background-color: #007bff; color: white; border: none; padding: 10px 15px; margin: 0 5px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        .date-navigation button:hover { background-color: #0056b3; }
+        .date-navigation span { font-size: 20px; font-weight: bold; margin: 0 15px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #e9ecef; color: #495057; }
+        td.events ul { list-style: none; padding: 0; margin: 0; }
+        td.events li { margin-bottom: 5px; padding-left: 10px; border-left: 3px solid #007bff; }
+        .no-events { text-align: center; color: #666; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <h1>이목중학교 학사일정</h1>
+        <div class="date-navigation">
+            <button onclick="changeMonth(-1)">이전 달</button>
+            <span id="currentMonthYear"></span>
+            <button onclick="changeMonth(1)">다음 달</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>날짜</th>
+                    <th>요일</th>
+                    <th>행사 내용</th>
+                </tr>
+            </thead>
+            <tbody id="calendarBody">
+                <tr><td colspan="3" class="no-events">데이터를 불러오는 중...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let currentYear;
+        let currentMonth;
+
+        function updateMonthYearDisplay() {
+            const date = new Date(currentYear, currentMonth - 1);
+            const options = { year: 'numeric', month: 'long' };
+            document.getElementById('currentMonthYear').textContent = date.toLocaleDateString('ko-KR', options);
+        }
+
+        async function fetchCalendarData(year, month) {
+            document.getElementById('calendarBody').innerHTML = '<tr><td colspan="3" class="no-events">데이터를 불러오는 중...</td></tr>';
+            try {
+                const response = await fetch(`/api/school_calendar?year=${year}&month=${month}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const events = await response.json();
+
+                renderCalendar(events);
+            } catch (error) {
+                console.error("Error fetching calendar data:", error);
+                document.getElementById('calendarBody').innerHTML = '<tr><td colspan="3" class="no-events">학사일정 데이터를 불러오지 못했습니다.</td></tr>';
+            }
+        }
+
+        function renderCalendar(events) {
+            const tbody = document.getElementById('calendarBody');
+            tbody.innerHTML = ''; // 기존 내용 지우기
+
+            if (events.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="no-events">해당 월의 학사일정이 없습니다.</td></tr>';
+                return;
+            }
+
+            // 월의 모든 날짜를 순회하며 이벤트 표시 (이벤트가 없는 날도 표시)
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+            const eventMap = new Map();
+            events.forEach(event => {
+                if (!eventMap.has(event.date)) {
+                    eventMap.set(event.date, []);
+                }
+                eventMap.get(event.date).push(...event.events); // 이벤트 배열 합치기
+            });
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const date = new Date(currentYear, currentMonth - 1, i);
+                const dateString = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                const dayOfWeek = date.toLocaleDateString('ko-KR', { weekday: 'short' });
+                const displayEvents = eventMap.has(dateString) ? eventMap.get(dateString) : [];
+
+                const row = document.createElement('tr');
+
+                const dateCell = document.createElement('td');
+                dateCell.textContent = `${dateString} (${dayOfWeek})`;
+                row.appendChild(dateCell);
+
+                const eventsCell = document.createElement('td');
+                eventsCell.classList.add('events');
+                if (displayEvents.length > 0) {
+                    const ul = document.createElement('ul');
+                    displayEvents.forEach(eventText => {
+                        const li = document.createElement('li');
+                        li.textContent = eventText.replace(/\\u([0-9a-fA-F]{4})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16))); // 유니코드 이스케이프 해제
+                        ul.appendChild(li);
+                    });
+                    eventsCell.appendChild(ul);
+                } else {
+                    eventsCell.textContent = '일정 없음';
+                }
+                row.appendChild(eventsCell);
+
+                tbody.appendChild(row);
+            }
+        }
+
+        function changeMonth(delta) {
+            currentMonth += delta;
+            if (currentMonth > 12) {
+                currentMonth = 1;
+                currentYear++;
+            } else if (currentMonth < 1) {
+                currentMonth = 12;
+                currentYear--;
+            }
+            updateMonthYearDisplay();
+            fetchCalendarData(currentYear, currentMonth);
+        }
+
+        // 페이지 로드 시 초기화
+        window.onload = () => {
+            const today = new Date();
+            currentYear = today.getFullYear();
+            currentMonth = today.getMonth() + 1;
+            updateMonthYearDisplay();
+            fetchCalendarData(currentYear, currentMonth);
+        };
+    </script>
+</body>
+</html>
