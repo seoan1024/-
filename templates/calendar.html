@@ -5,46 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>이목중학교 학사일정</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
-        h1 { color: #0056b3; text-align: center; margin-bottom: 30px; }
-        .calendar-container { background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 800px; margin: auto; }
-        .date-navigation { text-align: center; margin-bottom: 20px; }
-        .date-navigation button { background-color: #007bff; color: white; border: none; padding: 10px 15px; margin: 0 5px; border-radius: 5px; cursor: pointer; font-size: 16px; }
-        .date-navigation button:hover { background-color: #0056b3; }
-        .date-navigation span { font-size: 20px; font-weight: bold; margin: 0 15px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #e9ecef; color: #495057; }
-        td.events ul { list-style: none; padding: 0; margin: 0; }
-        td.events li { margin-bottom: 5px; padding-left: 10px; border-left: 3px solid #007bff; }
-        .no-events { text-align: center; color: #666; padding: 20px; }
+        body { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; margin: 0; background-color: #f4f7f6; color: #333; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 20px 0; box-sizing: border-box; }
+        .calendar-wrapper { background-color: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); max-width: 600px; width: 90%; text-align: center; }
+        h1 { color: #2c3e50; font-size: 28px; margin-bottom: 25px; border-bottom: 2px solid #3498db; padding-bottom: 15px; display: inline-block; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding: 0 10px; }
+        .header button { background-color: #3498db; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background-color 0.3s ease; }
+        .header button:hover { background-color: #2980b9; }
+        .header .current-month-year { font-size: 28px; font-weight: bold; color: #34495e; }
+
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; width: 100%; }
+        .day-name { background-color: #ecf0f1; color: #7f8c8d; padding: 12px 0; font-weight: bold; border-radius: 4px; font-size: 14px; }
+        .day-cell { background-color: #fff; padding: 15px 5px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); min-height: 100px; display: flex; flex-direction: column; align-items: flex-start; text-align: left; position: relative; overflow: hidden; }
+        .day-number { font-size: 20px; font-weight: bold; color: #2c3e50; margin-bottom: 5px; padding-left: 5px; }
+        .day-cell.other-month .day-number { color: #bdc3c7; } /* 이전/다음 달 날짜 색상 */
+        .day-cell.current-day { border: 2px solid #e74c3c; } /* 오늘 날짜 테두리 */
+        .event-list { list-style: none; padding: 0 5px; margin: 0; font-size: 12px; color: #555; max-height: 60px; overflow: hidden; /* 이벤트가 많으면 잘라냄 */ }
+        .event-list li { margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 8px; border-left: 3px solid #3498db; line-height: 1.3; }
+        .no-events { font-size: 12px; color: #999; text-align: center; padding-top: 10px; }
+        
+        .loading, .error-message { grid-column: span 7; padding: 40px; text-align: center; font-size: 18px; color: #7f8c8d; }
+        .error-message { color: #e74c3c; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="calendar-container">
+    <div class="calendar-wrapper">
         <h1>이목중학교 학사일정</h1>
-        <div class="date-navigation">
+        <div class="header">
             <button onclick="changeMonth(-1)">이전 달</button>
-            <span id="currentMonthYear"></span>
+            <span class="current-month-year" id="currentMonthYear"></span>
             <button onclick="changeMonth(1)">다음 달</button>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>날짜</th>
-                    <th>요일</th>
-                    <th>행사 내용</th>
-                </tr>
-            </thead>
-            <tbody id="calendarBody">
-                <tr><td colspan="3" class="no-events">데이터를 불러오는 중...</td></tr>
-            </tbody>
-        </table>
+        <div class="calendar-grid">
+            <div class="day-name">일</div>
+            <div class="day-name">월</div>
+            <div class="day-name">화</div>
+            <div class="day-name">수</div>
+            <div class="day-name">목</div>
+            <div class="day-name">금</div>
+            <div class="day-name">토</div>
+            </div>
     </div>
 
     <script>
         let currentYear;
         let currentMonth;
+        const today = new Date(); // 오늘 날짜를 미리 저장
 
         function updateMonthYearDisplay() {
             const date = new Date(currentYear, currentMonth - 1);
@@ -53,68 +58,122 @@
         }
 
         async function fetchCalendarData(year, month) {
-            document.getElementById('calendarBody').innerHTML = '<tr><td colspan="3" class="no-events">데이터를 불러오는 중...</td></tr>';
+            const calendarGrid = document.querySelector('.calendar-grid');
+            calendarGrid.innerHTML = `
+                <div class="day-name">일</div>
+                <div class="day-name">월</div>
+                <div class="day-name">화</div>
+                <div class="day-name">수</div>
+                <div class="day-name">목</div>
+                <div class="day-name">금</div>
+                <div class="day-name">토</div>
+                <div class="loading">데이터를 불러오는 중...</div>
+            `; // 로딩 메시지 표시
+
             try {
                 const response = await fetch(`/api/school_calendar?year=${year}&month=${month}`);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const events = await response.json();
-
+                
                 renderCalendar(events);
             } catch (error) {
                 console.error("Error fetching calendar data:", error);
-                document.getElementById('calendarBody').innerHTML = '<tr><td colspan="3" class="no-events">학사일정 데이터를 불러오지 못했습니다.</td></tr>';
+                calendarGrid.innerHTML = `
+                    <div class="day-name">일</div>
+                    <div class="day-name">월</div>
+                    <div class="day-name">화</div>
+                    <div class="day-name">수</div>
+                    <div class="day-name">목</div>
+                    <div class="day-name">금</div>
+                    <div class="day-name">토</div>
+                    <div class="error-message">학사일정 데이터를 불러오지 못했습니다.</div>
+                `;
             }
         }
 
         function renderCalendar(events) {
-            const tbody = document.getElementById('calendarBody');
-            tbody.innerHTML = ''; // 기존 내용 지우기
-
-            if (events.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="no-events">해당 월의 학사일정이 없습니다.</td></tr>';
-                return;
+            const calendarGrid = document.querySelector('.calendar-grid');
+            
+            // 기존 요일명 제외하고 날짜 셀만 지우기
+            let dayNames = '';
+            for(let i = 0; i < 7; i++) {
+                dayNames += calendarGrid.children[i].outerHTML;
             }
+            calendarGrid.innerHTML = dayNames; // 요일명만 남기고 초기화
 
-            // 월의 모든 날짜를 순회하며 이벤트 표시 (이벤트가 없는 날도 표시)
-            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
             const eventMap = new Map();
             events.forEach(event => {
                 if (!eventMap.has(event.date)) {
                     eventMap.set(event.date, []);
                 }
-                eventMap.get(event.date).push(...event.events); // 이벤트 배열 합치기
+                eventMap.get(event.date).push(...event.events);
             });
 
+            // 해당 월의 첫 날과 마지막 날 계산
+            const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1);
+            const lastDayOfMonth = new Date(currentYear, currentMonth, 0);
+            const daysInMonth = lastDayOfMonth.getDate();
+
+            // 달력 시작 요일 맞추기 (일요일=0, 월요일=1, ...)
+            const startDay = firstDayOfMonth.getDay(); // 0 (일) ~ 6 (토)
+
+            // 이전 달의 마지막 날짜부터 채워넣기 (빈 칸 채우기)
+            const prevMonthLastDay = new Date(currentYear, currentMonth - 1, 0).getDate();
+            for (let i = startDay - 1; i >= 0; i--) {
+                const cell = document.createElement('div');
+                cell.classList.add('day-cell', 'other-month');
+                cell.innerHTML = `<div class="day-number">${prevMonthLastDay - i}</div>`;
+                calendarGrid.appendChild(cell);
+            }
+
+            // 현재 월의 날짜 채우기
             for (let i = 1; i <= daysInMonth; i++) {
                 const date = new Date(currentYear, currentMonth - 1, i);
                 const dateString = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-                const dayOfWeek = date.toLocaleDateString('ko-KR', { weekday: 'short' });
                 const displayEvents = eventMap.has(dateString) ? eventMap.get(dateString) : [];
 
-                const row = document.createElement('tr');
+                const cell = document.createElement('div');
+                cell.classList.add('day-cell');
+                
+                // 오늘 날짜인 경우 클래스 추가
+                if (date.getFullYear() === today.getFullYear() && 
+                    date.getMonth() === today.getMonth() && 
+                    date.getDate() === today.getDate()) {
+                    cell.classList.add('current-day');
+                }
 
-                const dateCell = document.createElement('td');
-                dateCell.textContent = `${dateString} (${dayOfWeek})`;
-                row.appendChild(dateCell);
-
-                const eventsCell = document.createElement('td');
-                eventsCell.classList.add('events');
+                cell.innerHTML = `<div class="day-number">${i}</div>`;
+                
                 if (displayEvents.length > 0) {
                     const ul = document.createElement('ul');
+                    ul.classList.add('event-list');
                     displayEvents.forEach(eventText => {
                         const li = document.createElement('li');
-                        li.textContent = eventText.replace(/\\u([0-9a-fA-F]{4})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16))); // 유니코드 이스케이프 해제
+                        // 유니코드 이스케이프 (\ud559\ub144)를 실제 한글로 변환
+                        li.textContent = eventText.replace(/\\u([0-9a-fA-F]{4})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)));
                         ul.appendChild(li);
                     });
-                    eventsCell.appendChild(ul);
+                    cell.appendChild(ul);
                 } else {
-                    eventsCell.textContent = '일정 없음';
+                    const noEventDiv = document.createElement('div');
+                    noEventDiv.classList.add('no-events');
+                    noEventDiv.textContent = '일정 없음';
+                    // cell.appendChild(noEventDiv); // 이미지에서는 없는 날은 비워져있어서 일단 주석처리
                 }
-                row.appendChild(eventsCell);
+                calendarGrid.appendChild(cell);
+            }
 
-                tbody.appendChild(row);
+            // 다음 달의 날짜로 빈 칸 채우기
+            const totalCells = startDay + daysInMonth;
+            const remainingCells = 42 - totalCells; // 6주 (7일 * 6주 = 42칸) 기준
+
+            for (let i = 1; i <= remainingCells; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('day-cell', 'other-month');
+                cell.innerHTML = `<div class="day-number">${i}</div>`;
+                calendarGrid.appendChild(cell);
             }
         }
 
@@ -133,7 +192,6 @@
 
         // 페이지 로드 시 초기화
         window.onload = () => {
-            const today = new Date();
             currentYear = today.getFullYear();
             currentMonth = today.getMonth() + 1;
             updateMonthYearDisplay();
