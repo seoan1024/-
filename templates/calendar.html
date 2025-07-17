@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>이목중학교 일정</title> <style>
+    <title>이목중학교 일정</title>
+    <style>
         /* 기본 스타일 (모바일 우선) */
         body { 
             font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; 
@@ -85,7 +86,7 @@
             align-items: flex-start; 
             text-align: left; 
             position: relative; 
-            overflow: hidden; 
+            /* overflow: hidden; */ /* 일정이 잘리지 않도록 overflow:hidden 제거 또는 필요시 auto */
         }
         .day-number { 
             font-size: 16px; /* 모바일에서 폰트 크기 줄임 */
@@ -102,14 +103,15 @@
             margin: 0; 
             font-size: 10px; /* 모바일에서 이벤트 폰트 크기 줄임 */
             color: #555; 
-            max-height: 45px; /* 모바일에서 최대 높이 줄임 */
-            overflow: hidden; 
+            /* max-height: 45px; */ /* 일정이 잘리지 않도록 높이 제한 제거 */
+            /* overflow: hidden; */ /* 일정이 잘리지 않도록 overflow:hidden 제거 또는 필요시 auto */
+            white-space: normal; /* 텍스트가 여러 줄로 감싸지도록 허용 */
         }
         .event-list li { 
             margin-bottom: 2px; 
-            white-space: nowrap; 
+            white-space: normal; /* 텍스트가 여러 줄로 감싸지도록 허용 */
             overflow: hidden; 
-            text-overflow: ellipsis; 
+            text-overflow: ellipsis; /* 한 줄일 때 말줄임표 유지 (필요시 제거) */
             padding-left: 6px; 
             border-left: 2px solid #3498db; /* 모바일에서 테두리 두께 줄임 */
             line-height: 1.2; 
@@ -136,7 +138,10 @@
             .day-name { padding: 11px 0; font-size: 13px; }
             .day-cell { padding: 12px 4px; min-height: 90px; }
             .day-number { font-size: 18px; }
-            .event-list { font-size: 11px; max-height: 55px; }
+            .event-list { 
+                font-size: 11px; 
+                /* max-height: 55px; */ /* 일정이 잘리지 않도록 높이 제한 제거 */
+            }
             .event-list li { padding-left: 7px; border-left: 2.5px solid #3498db; }
             .loading, .error-message { padding: 30px; font-size: 17px; }
         }
@@ -152,7 +157,10 @@
             .day-name { padding: 12px 0; font-size: 14px; }
             .day-cell { padding: 15px 5px; min-height: 100px; }
             .day-number { font-size: 20px; }
-            .event-list { font-size: 12px; max-height: 60px; }
+            .event-list { 
+                font-size: 12px; 
+                /* max-height: 60px; */ /* 일정이 잘리지 않도록 높이 제한 제거 */
+            }
             .event-list li { padding-left: 8px; border-left: 3px solid #3498db; }
             .loading, .error-message { padding: 40px; font-size: 18px; }
         }
@@ -160,7 +168,8 @@
 </head>
 <body>
     <div class="calendar-wrapper">
-        <h1>이목중학교 일정</h1> <div class="header">
+        <h1>이목중학교 일정</h1>
+        <div class="header">
             <button onclick="changeMonth(-1)">이전 달</button>
             <span class="current-month-year" id="currentMonthYear"></span>
             <button onclick="changeMonth(1)">다음 달</button>
